@@ -1,0 +1,4 @@
+.DS_Store
+.rivet/
+node_modules/
+npm-debug.log*
