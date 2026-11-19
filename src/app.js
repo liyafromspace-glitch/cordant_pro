@@ -73,7 +73,7 @@ function investigationCard() {
 
 function timelineCard() {
   return `<section class="card timeline-card"><div class="card-head"><div><h2>Incident flight recorder</h2><div class="card-subtitle">Scrub across systems to reconstruct control state</div></div><span class="mono">Window 14:03–14:09 UTC</span></div>
-    <div class="timeline-controls"><button class="play" id="replay" aria-label="Replay">${state.replaying?'Ⅱ':'▷'}</button><span>${state.replaying?'Replaying evidence':'Replay incident'}</span><span style="margin-left:auto;color:var(--ink-3)">Press R to replay · E for evidence</span></div>
+    <div class="timeline-controls"><button class="play" id="replay" aria-label="Replay">${state.replaying?'Ⅱ':'▷'}</button><span id="replay-label">${state.replaying?'Replaying evidence':'Replay incident'}</span><span style="margin-left:auto;color:var(--ink-3)">Press R to replay · E for evidence</span></div>
     <div class="timeline-wrap"><div class="timeline-track"></div><div class="timeline-events">${timelineEvents.map((e,i)=>`<div class="event ${i<state.timeline?'done':''} ${i===state.timeline?e[2]:''} ${i>state.timeline?'future':''}"><div class="event-dot">${i<state.timeline?'✓':''}</div><div class="event-time">${e[0]}</div><div class="event-label">${e[1]}</div></div>`).join('')}</div></div>
     <input class="scrubber" id="scrubber" type="range" min="0" max="5" value="${state.timeline}" aria-label="Incident timeline position" />
   </section>`;
@@ -132,26 +132,96 @@ function portfolioView() {
   </main>`);
 }
 
-function render() {
+const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)');
+let lastView = null, lastRing = 0, lastDone = 0;
+
+// Counts "$84.2M" / "142" / "42s" up from zero, preserving prefix, suffix and decimals.
+function countUp(el) {
+  const m = el.textContent.match(/^([^\d]*)(\d+(?:\.\d+)?)(.*)$/);
+  if (!m || reducedMotion.matches) return;
+  const [, pre, num, post] = m, target = parseFloat(num), decimals = (num.split('.')[1] || '').length, t0 = performance.now(), dur = 900;
+  const tick = now => {
+    const p = Math.min(1, (now - t0) / dur), eased = 1 - Math.pow(1 - p, 4);
+    el.textContent = pre + (target * eased).toFixed(decimals) + post;
+    if (p < 1) requestAnimationFrame(tick);
+  };
+  el.textContent = pre + (0).toFixed(decimals) + post;
+  requestAnimationFrame(tick);
+}
+
+function paint(viewChanged) {
   const view = state.view === 'investigate' ? investigateView() : state.view === 'blast' ? blastView() : state.view === 'package' ? packageView() : state.view === 'approval' ? approvalView() : state.view === 'execution' || state.view === 'verify' ? executionView() : portfolioView();
   app.innerHTML = view;
   document.body.classList.toggle('show-evidence', state.evidence);
   bind();
+  const main = app.querySelector('.view');
+  if (!main) return;
+  if (viewChanged) {
+    // Stagger indices consumed by motion.css
+    main.classList.add('enter');
+    main.querySelectorAll('.card, .metric').forEach((el, i) => el.style.setProperty('--s', i));
+    ['.lineage-node', '.claim', '.compile-item', '.asset', '.approver'].forEach(sel => main.querySelectorAll(sel).forEach((el, i) => el.style.setProperty('--i', i)));
+    main.querySelectorAll('.metric-value').forEach(countUp);
+    lastRing = 0; lastDone = 0;
+  } else {
+    main.classList.add('rerender');
+  }
+  // Execution view: animate the finality ring from its previous value (DOM is rebuilt each tick)
+  const ring = app.querySelector('.ring');
+  if (ring) {
+    const target = ring.style.getPropertyValue('--p');
+    ring.style.setProperty('--p', lastRing);
+    requestAnimationFrame(() => requestAnimationFrame(() => ring.style.setProperty('--p', target)));
+    lastRing = target;
+    if (state.complete) ring.classList.add('done');
+    const done = app.querySelectorAll('.verify-item.done').length;
+    if (done > lastDone) app.querySelectorAll('.verify-item.done')[done - 1].classList.add('fresh');
+    lastDone = done;
+  }
+}
+
+function render() {
+  const viewChanged = state.view !== lastView, first = lastView === null;
+  lastView = state.view;
+  if (viewChanged) { clearInterval(replayTimer); state.replaying = false; }
+  if (viewChanged && !first && document.startViewTransition && !reducedMotion.matches) {
+    // Topbar and progress rail persist; only the view cross-fades. Focus moves to the new heading (a11y).
+    document.startViewTransition(() => paint(true)).finished.finally(focusHeading);
+  } else {
+    paint(viewChanged);
+    if (viewChanged && !first) focusHeading();
+  }
+}
+
+function focusHeading() {
+  const h1 = app.querySelector('h1');
+  if (h1) { h1.tabIndex = -1; h1.focus({ preventScroll: true }); }
 }
 
 function toast(message) {
   const el = document.createElement('div'); el.className='toast'; el.textContent=message;
-  document.querySelector('#toast-region').append(el); setTimeout(()=>el.remove(),2600);
+  document.querySelector('#toast-region').append(el);
+  setTimeout(()=>el.classList.add('leaving'),2300); setTimeout(()=>el.remove(),2600);
 }
 
 let replayTimer;
+function setReplayUI() {
+  const btn = document.querySelector('#replay'), label = document.querySelector('#replay-label');
+  if (btn) btn.textContent = state.replaying ? 'Ⅱ' : '▷';
+  if (label) label.textContent = state.replaying ? 'Replaying evidence' : 'Replay incident';
+}
+// Replays by updating the timeline in place, so dot/edge transitions actually animate.
 function replay() {
-  clearInterval(replayTimer); state.timeline=0; state.replaying=true; render();
-  replayTimer=setInterval(()=>{ state.timeline++; if(state.timeline>=5){clearInterval(replayTimer);state.replaying=false;} render(); },720);
+  clearInterval(replayTimer); state.replaying = true; setReplayUI(); updateTimeline(0);
+  replayTimer = setInterval(() => {
+    updateTimeline(state.timeline + 1);
+    if (state.timeline >= 5) { clearInterval(replayTimer); state.replaying = false; setReplayUI(); }
+  }, 720);
 }
 
 function updateTimeline(value) {
   state.timeline = value;
+  const scrubber = document.querySelector('#scrubber'); if (scrubber) scrubber.value = value;
   document.querySelectorAll('.event').forEach((el, i) => {
     el.classList.toggle('done', i < value);
     el.classList.toggle('fail', i === value && timelineEvents[i][2] === 'fail');
@@ -176,10 +246,21 @@ function bind() {
   });
   const knob=document.querySelector('#diff-knob'), table=document.querySelector('#diff-table'), handle=document.querySelector('#diff-handle');
   if(knob&&table){let drag=false; const move=e=>{if(!drag)return;const r=table.getBoundingClientRect();const x=Math.max(18,Math.min(92,(e.clientX-r.left)/r.width*100));knob.style.left=handle.style.left=x+'%';};knob.onpointerdown=e=>{drag=true;knob.setPointerCapture(e.pointerId)};knob.onpointermove=move;knob.onpointerup=()=>drag=false;}
-  document.querySelectorAll('[data-capability]').forEach(el=>el.addEventListener('click',()=>{state.capability=el.dataset.capability;render();}));
-  document.querySelector('#authority-input')?.addEventListener('input',()=>{state.packageReady=false;state.approvals=[false,false];document.querySelector('#approve-package').disabled=true;toast('Material change detected · approvals cleared and package hash invalidated');});
+  // Update in place (no re-render) so the dim/scale transitions on assets can animate and focus is kept.
+  document.querySelectorAll('[data-capability]').forEach(el=>el.addEventListener('click',()=>{
+    state.capability=el.dataset.capability;
+    document.querySelectorAll('.capability').forEach(c=>c.classList.toggle('active',c.dataset.capability===state.capability));
+    document.querySelectorAll('.asset').forEach(a=>a.classList.toggle('dim',a.dataset.cap!==state.capability));
+  }));
+  document.querySelector('#authority-input')?.addEventListener('input',()=>{
+    state.packageReady=false;state.approvals=[false,false];document.querySelector('#approve-package').disabled=true;
+    const notice=document.querySelector('.notice'); if(notice){notice.classList.remove('flash');void notice.offsetWidth;notice.classList.add('flash');}
+    document.querySelector('.hash')?.classList.add('stale');
+    const badge=document.querySelector('.head-meta .badge'); if(badge){badge.className='badge amber';badge.textContent='Approval invalidated';}
+    toast('Material change detected · approvals cleared and package hash invalidated');
+  });
   document.querySelector('#approve-package')?.addEventListener('click',()=>{state.view='approval';render();});
-  document.querySelectorAll('.hold').forEach(btn=>{let timer;const approve=()=>{state.approvals[+btn.dataset.approver]=true;toast('Attestation bound to package hash');render()};const begin=e=>{if(e?.key&&!['Enter',' '].includes(e.key))return;e?.preventDefault();if(timer)return;btn.classList.add('holding');timer=setTimeout(approve,1100)};const cancel=e=>{if(e?.key&&!['Enter',' ','Escape'].includes(e.key))return;clearTimeout(timer);timer=null;btn.classList.remove('holding')};btn.onpointerdown=begin;btn.onpointerup=cancel;btn.onpointerleave=cancel;btn.onpointercancel=cancel;btn.onblur=cancel;btn.onkeydown=begin;btn.onkeyup=cancel;});
+  document.querySelectorAll('.hold').forEach(btn=>{let timer;const approve=()=>{const i=+btn.dataset.approver;state.approvals[i]=true;toast('Attestation bound to package hash');navigator.vibrate?.(18);render();document.querySelectorAll('.approver')[i]?.classList.add('just-approved');document.querySelector('#handoff')?.classList.toggle('ready',state.approvals.every(Boolean));};const begin=e=>{if(e?.key&&!['Enter',' '].includes(e.key))return;e?.preventDefault();if(timer)return;btn.classList.add('holding');timer=setTimeout(approve,1100)};const cancel=e=>{if(e?.key&&!['Enter',' ','Escape'].includes(e.key))return;clearTimeout(timer);timer=null;btn.classList.remove('holding')};btn.onpointerdown=begin;btn.onpointerup=cancel;btn.onpointerleave=cancel;btn.onpointercancel=cancel;btn.onblur=cancel;btn.onkeydown=begin;btn.onkeyup=cancel;});
   document.querySelector('#handoff')?.addEventListener('click',()=>{state.view='execution';toast('External execution handoff recorded');render();});
   document.querySelector('#start-verification')?.addEventListener('click',()=>{state.executing=true;state.verification=0;render();const t=setInterval(()=>{state.verification++;if(state.verification>=5){clearInterval(t);state.complete=true;state.executing=false;}render();},780);});
   document.querySelector('#search-button')?.addEventListener('click',()=>toast('Search is outside this prototype flow'));
@@ -195,4 +276,5 @@ document.addEventListener('keydown',e=>{
   const n=Number(e.key);if(n>=1&&n<=5){state.view=steps[n-1][0];render();}
 });
 
+addEventListener('scroll',()=>document.body.classList.toggle('scrolled',scrollY>8),{passive:true});
 render();

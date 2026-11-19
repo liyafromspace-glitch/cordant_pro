@@ -104,7 +104,6 @@ body.show-evidence .evidence-mode-chip { display:block; animation:snap .22s var(
 .progress-dot { width:12px;height:12px;border:1.5px solid var(--line-strong);border-radius:50%;background:var(--bg);z-index:2; }
 .progress-step.active { color:var(--ink);font-weight:620; }.progress-step.active .progress-dot { border-color:var(--blue);background:var(--blue);box-shadow:0 0 0 4px var(--blue-soft); }
 .progress-step.complete .progress-dot { border-color:var(--green);background:var(--green); }
-.view { animation:viewIn .34s var(--ease) both; }
 @keyframes viewIn { from{opacity:0;transform:translateY(5px)}to{opacity:1;transform:none} }
 .section-grid { display:grid; grid-template-columns:1.25fr .75fr; gap:18px; }
 .metric-row { display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:18px; }

@@ -1,0 +1,104 @@
+/* Cordant motion layer — animations & microinteractions.
+   Rules:
+   - transform/opacity only (compositor friendly)
+   - spatial/persistent motion is opt-in via prefers-reduced-motion: no-preference
+   - state-bearing transitions (colour, border) always stay on */
+
+@property --p { syntax: '<number>'; inherits: false; initial-value: 0; }
+
+/* ---------- Always-on feedback (non-spatial) ---------- */
+.badge { transition: background var(--base) var(--ease), color var(--base) var(--ease); }
+.field input { transition: border-color var(--fast), box-shadow var(--fast); }
+.field input:not([readonly]):focus { border-color: var(--blue); box-shadow: 0 0 0 4px var(--blue-soft); outline: none; }
+.hash { transition: opacity var(--base), color var(--base); }
+.hash.stale { opacity: .45; text-decoration: line-through; }
+.ring { transition: --p .65s var(--ease); }
+.ring-value, .metric-value { font-variant-numeric: tabular-nums; }
+body.scrolled .topbar { box-shadow: 0 6px 24px rgba(14, 18, 27, .06); }
+.topbar { transition: box-shadow var(--base); }
+.edge { transition: opacity var(--base) var(--ease); }
+.event-dot { transition: background var(--base), border-color var(--base), box-shadow var(--base); }
+.progress-dot { transition: background var(--base), border-color var(--base), box-shadow var(--base); }
+.table-link::after { content: ' →'; opacity: 0; display: inline-block; transition: opacity var(--fast); }
+.portfolio-table tr:hover .table-link::after, .table-link:focus-visible::after { opacity: 1; }
+
+/* ---------- Toast exit ---------- */
+.toast.leaving { opacity: 0; transition: opacity var(--base) var(--ease); }
+
+/* ---------- Motion (opt-in) ---------- */
+@media (prefers-reduced-motion: no-preference) {
+  /* Press feedback */
+  .button, .nav-btn, .icon-button, .capability, .progress-step, .claim, .play { transition-property: transform, background, border-color, box-shadow, color, opacity; }
+  .button:active { transform: translateY(0) scale(.97); box-shadow: none; }
+  .nav-btn:active, .icon-button:active, .play:active { transform: scale(.94); }
+  .capability:active { transform: scale(.985); }
+  .progress-step:active .progress-dot { transform: scale(.8); }
+  .claim:active { transform: scale(.99); }
+  .hold:active, .hold.holding { transform: scale(.985); }
+  .hold { transition: transform var(--fast) var(--ease); }
+  .diff-knob { transition: transform var(--fast) var(--ease-snap), box-shadow var(--fast); }
+  .diff-knob:active { transform: translateX(-50%) scale(1.15); box-shadow: var(--shadow-md); }
+  .table-link::after { transform: translateX(-5px); transition: opacity var(--fast), transform var(--base) var(--ease); }
+  .portfolio-table tr:hover .table-link::after, .table-link:focus-visible::after { transform: none; }
+
+  /* View enter: cards rise in with a stagger (--s set from JS) */
+  .view.enter .page-head { animation: rise .5s var(--ease) both; }
+  .view.enter .card, .view.enter .metric { animation: rise .55s var(--ease) both; animation-delay: calc(var(--s, 0) * 55ms + 60ms); }
+  .view.enter .lineage-node { animation: rise .5s var(--ease) both; animation-delay: calc(var(--i, 0) * 80ms + 160ms); }
+  .view.enter .claim { animation: rise .45s var(--ease) both; animation-delay: calc(var(--i, 0) * 70ms + 320ms); }
+  .view.enter .compile-item { animation: rise .4s var(--ease) both; animation-delay: calc(var(--i, 0) * 70ms + 200ms); }
+  .view.enter .compile-check { animation: snap .3s var(--ease-snap) both; animation-delay: calc(var(--i, 0) * 70ms + 380ms); transform: scale(0); }
+  .view.enter .asset { animation: pop .5s var(--ease-snap) both; animation-delay: calc(var(--i, 0) * 70ms + 250ms); }
+  .view.enter .approver { animation: rise .5s var(--ease) both; animation-delay: calc(var(--i, 0) * 90ms + 120ms); }
+  @keyframes rise { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
+  @keyframes pop { from { opacity: 0; scale: .6; } to { opacity: 1; scale: 1; } }
+
+  /* Same-view re-render: don't replay one-shot draw animations */
+  .rerender .edge, .rerender .edge::after { animation: none; }
+  .rerender .edge::after { transform: scale(1); }
+
+  /* Timeline: newly reached events pop; the failing event pings 3x */
+  .event.done .event-dot { animation: snap .3s var(--ease-snap) both; transform: scale(0); }
+  .event.fail .event-dot { animation: ping 1.4s var(--ease) 3; }
+  @keyframes ping { 0% { box-shadow: 0 0 0 4px white, 0 0 0 4px rgba(216, 58, 46, .45); } 100% { box-shadow: 0 0 0 4px white, 0 0 0 16px rgba(216, 58, 46, 0); } }
+  .rerender .event.done .event-dot { animation: none; transform: none; }
+
+  /* Evidence freshness pulses 3x on entry */
+  .view.enter .fresh-dot { animation: ping-green 1.6s var(--ease) 3 .8s; }
+  @keyframes ping-green { 0% { box-shadow: 0 0 0 0 rgba(46, 154, 79, .5); } 100% { box-shadow: 0 0 0 10px rgba(46, 154, 79, 0); } }
+
+  /* Package edit: flash the invalidation notice */
+  .notice.flash { animation: nudge .5s var(--ease-snap); }
+  @keyframes nudge { 0%, 100% { translate: 0; } 25% { translate: -4px; } 60% { translate: 3px; } }
+
+  /* Approval: seal only animates on the card that was just attested */
+  .approver .success-seal { animation: none; }
+  .approver.just-approved { animation: glow .9s var(--ease); }
+  .approver.just-approved .success-seal { animation: seal .52s var(--ease-snap) both; }
+  .approver.just-approved .success-seal b { display: inline-block; animation: snap .4s var(--ease-snap) .15s both; transform: scale(0); }
+  @keyframes glow { 0% { box-shadow: 0 0 0 0 rgba(46, 154, 79, .4); } 100% { box-shadow: 0 0 0 18px rgba(46, 154, 79, 0); } }
+
+  #handoff.ready:not(:disabled) { animation: glow-blue 1s var(--ease) .2s; }
+  @keyframes glow-blue { 0% { box-shadow: 0 0 0 0 rgba(23, 24, 26, .35); } 100% { box-shadow: 0 0 0 14px rgba(23, 24, 26, 0); } }
+
+  /* Verification: newest step pops */
+  .verify-item.fresh .verify-icon { animation: snap .35s var(--ease-snap) both; transform: scale(0); }
+  .verify-item.fresh { animation: rise .35s var(--ease) both; }
+  .verify-item.running .verify-icon { border-style: solid; }
+  .finality .ring.done { animation: glow .9s var(--ease); }
+
+  /* View Transitions: topbar + rail persist, content cross-fades */
+  .topbar { view-transition-name: topbar; }
+  .progress-rail { view-transition-name: rail; }
+  main.view { view-transition-name: view; }
+  ::view-transition-old(view) { animation: vt-out .14s var(--ease) both; }
+  ::view-transition-new(view) { animation: vt-in .22s var(--ease) .06s both; }
+  @keyframes vt-out { to { opacity: 0; } }
+  @keyframes vt-in { from { opacity: 0; } }
+}
+
+/* Reduced motion: keep the fill of the hold button (it conveys progress) but no movement */
+@media (prefers-reduced-motion: reduce) {
+  .view.enter .page-head, .view.enter .card, .view.enter .metric { animation: fade-only .25s ease both; }
+  @keyframes fade-only { from { opacity: 0; } to { opacity: 1; } }
+}
